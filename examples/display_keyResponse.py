@@ -23,21 +23,36 @@ import DFRobot_RPi_Eink_Display
 fontFilePath = "./resources/wqydkzh.ttf"  # fonts file
 
 # peripheral params
-RASPBERRY_SPI_BUS = 0
-RASPBERRY_SPI_DEV = 0
-RASPBERRY_PIN_CS = 27
-RASPBERRY_PIN_CD = 17
-RASPBERRY_PIN_BUSY = 4
-RASPBERRY_PIN_RST = 26
+if DFRobot_RPi_Eink_Display.THIS_BOARD_TYPE:
+    RASPBERRY_SPI_BUS = 0
+    RASPBERRY_SPI_DEV = 0
+    RASPBERRY_PIN_CS = 27
+    RASPBERRY_PIN_CD = 17
+    RASPBERRY_PIN_BUSY = 4
+    RASPBERRY_PIN_RST = 26
+
+    KEY_A = 21
+    KEY_B = 20
+    eink_display = DFRobot_RPi_Eink_Display.DFRobot_RPi_Eink_Display(RASPBERRY_SPI_BUS, RASPBERRY_SPI_DEV, RASPBERRY_PIN_CS,
+                                                                     RASPBERRY_PIN_CD, RASPBERRY_PIN_BUSY,
+                                                                     RASPBERRY_PIN_RST)  # create eink_display object
+
+else:
+    ROCK_SPI_BUS = 1
+    ROCK_SPI_DEV = 0
+    ROCK_PIN_CS = 13   # 150
+    ROCK_PIN_CD = 11   # 146
+    ROCK_PIN_BUSY = 7   # 75
+    ROCK_PIN_RST = 37   # 158
+
+    KEY_A = 40
+    KEY_B = 38
+    eink_display = DFRobot_RPi_Eink_Display.DFRobot_RPi_Eink_Display(ROCK_SPI_BUS, ROCK_SPI_DEV, ROCK_PIN_CS,
+                                                                     ROCK_PIN_CD, ROCK_PIN_BUSY,
+                                                                     ROCK_PIN_RST)  # create eink_display object
 
 # get gpio interface
 GPIO = DFRobot_RPi_Eink_Display.GPIO
-KEY_A = 21
-KEY_B = 20
-
-eink_display = DFRobot_RPi_Eink_Display.DFRobot_RPi_Eink_Display(RASPBERRY_SPI_BUS, RASPBERRY_SPI_DEV, RASPBERRY_PIN_CS,
-                                                                 RASPBERRY_PIN_CD, RASPBERRY_PIN_BUSY,
-                                                                 RASPBERRY_PIN_RST)  # create eink_display object
 
 key_a_lock = threading.Lock()  # key A threading lock
 key_b_lock = threading.Lock()  # key B threading lock
@@ -70,10 +85,14 @@ def main():
     eink_display.set_ex_fonts_fmt(32, 32)  # set extension fonts width and height
 
     # config keyA and keyB
-    key_a = GPIO(KEY_A, GPIO.IN)  # set key to input
-    key_b = GPIO(KEY_B, GPIO.IN)  # set key to input
-    key_a.set_interrupt(GPIO.FALLING, key_a_call_back)  # set key interrupt callback
-    key_b.set_interrupt(GPIO.FALLING, key_b_call_back)  # set key interrupt callback
+    if DFRobot_RPi_Eink_Display.THIS_BOARD_TYPE:
+        key_a = GPIO(KEY_A, GPIO.IN)  # set key to input
+        key_b = GPIO(KEY_B, GPIO.IN)  # set key to input
+        key_a.set_interrupt(GPIO.RISING, key_a_call_back)  # set key interrupt callback
+        key_b.set_interrupt(GPIO.FALLING, key_b_call_back)  # set key interrupt callback
+    else:
+        key_a = GPIO(KEY_A, GPIO.OUT)  # set key to input
+        key_b = GPIO(KEY_B, GPIO.OUT)  # set key to input
 
     # clear screen
     eink_display.begin()
@@ -89,6 +108,9 @@ def main():
     eink_display.set_text_cursor(0, 32)
 
     while True:
+        if not DFRobot_RPi_Eink_Display.THIS_BOARD_TYPE:
+            key_a_flag = False if key_a.read() else True  # key A flag
+            key_b_flag = False if key_b.read() else True  # key B flag
         if key_a_flag:
             key_a_lock.acquire()  # wait key A release
             key_a_flag = False

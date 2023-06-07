@@ -15,10 +15,26 @@ import sys
 import time
 import spidev
 import freetype
-import RPi.GPIO as RPIGPIO
 
-RPIGPIO.setmode(RPIGPIO.BCM)
-RPIGPIO.setwarnings(False)
+# 根据开发板类型选择驱动库
+ROCK_PI_BOARD = 0
+RASPBERRY_PI_BOARD = 1
+THIS_BOARD_TYPE = RASPBERRY_PI_BOARD
+try:
+    with open('/proc/device-tree/model', 'r') as f:
+        model = f.read()
+        if 'ROCK PI' in model:
+            THIS_BOARD_TYPE = ROCK_PI_BOARD
+except:
+    pass
+
+if THIS_BOARD_TYPE:
+    import RPi.GPIO as RPIGPIO
+
+    RPIGPIO.setmode(RPIGPIO.BCM)
+    RPIGPIO.setwarnings(False)
+else:
+    import mraa
 
 fonts_6_8 = {
     "fonts": {  # left to right, msb to bottom, lsb to top
@@ -235,10 +251,11 @@ class SPI:
 
     def __init__(self, bus, dev, speed = 3900000, mode = MODE_4):
         self._bus = spidev.SpiDev()
-        self._bus.open(0, 0)
-        self._bus.no_cs = True
+        self._bus.open(bus, dev)
         self._bus.max_speed_hz = speed
-        self._bus.threewire = True
+        if THIS_BOARD_TYPE:
+            self._bus.no_cs = True
+            self._bus.threewire = True
 
     def transfer(self, buf):
         if len(buf):
@@ -251,35 +268,51 @@ class SPI:
 
 
 class GPIO:
-    HIGH = RPIGPIO.HIGH
-    LOW = RPIGPIO.LOW
+    if THIS_BOARD_TYPE:
+        HIGH = RPIGPIO.HIGH
+        LOW = RPIGPIO.LOW
 
-    OUT = RPIGPIO.OUT
-    IN = RPIGPIO.IN
+        OUT = RPIGPIO.OUT
+        IN = RPIGPIO.IN
 
-    RISING = RPIGPIO.RISING
-    FALLING = RPIGPIO.FALLING
-    BOTH = RPIGPIO.BOTH
+        RISING = RPIGPIO.RISING
+        FALLING = RPIGPIO.FALLING
+        BOTH = RPIGPIO.BOTH
+    else:
+        HIGH = 1
+        LOW = 0
+
+        OUT = mraa.DIR_OUT
+        IN = mraa.DIR_IN
+
+        RISING = mraa.EDGE_RISING
+        FALLING = mraa.EDGE_FALLING
+        BOTH = mraa.EDGE_BOTH
 
     def __init__(self, pin, mode, default_out=HIGH):
-        self._pin = pin
         self._f_int = None
         self._int_done = True
         self._int_mode = None
-        if mode == self.OUT:
-            RPIGPIO.setup(pin, mode)
-            if default_out == self.HIGH:
+        if THIS_BOARD_TYPE:
+            self._pin = pin
+            if mode == self.OUT:
+                RPIGPIO.setup(pin, mode)
                 RPIGPIO.output(pin, default_out)
             else:
-                RPIGPIO.output(pin, self.LOW)
+                RPIGPIO.setup(pin, self.IN, pull_up_down=RPIGPIO.PUD_UP)
         else:
-            RPIGPIO.setup(pin, self.IN, pull_up_down=RPIGPIO.PUD_UP)
+            self._pin = mraa.Gpio(pin)
+            self._pin.dir(mode)
+            if mode == self.OUT:
+                self._pin.write(default_out)
+            else:
+                self._pin.mode(mraa.MODE_PULLUP)
 
     def set_out(self, level):
-        if level:
-            RPIGPIO.output(self._pin, self.HIGH)
+        if THIS_BOARD_TYPE:
+            RPIGPIO.output(self._pin, level)
         else:
-            RPIGPIO.output(self._pin, self.LOW)
+            self._pin.write(level)
 
     def _int_cb(self, status):
         if self._int_done:
@@ -297,14 +330,23 @@ class GPIO:
         if mode != self.RISING and mode != self.FALLING and mode != self.BOTH:
             return
         self._int_mode = mode
-        RPIGPIO.add_event_detect(self._pin, mode, self._int_cb)
+        if THIS_BOARD_TYPE:
+            RPIGPIO.add_event_detect(self._pin, mode, self._int_cb)
+        else:
+            self._pin.isr(mode, self._int_cb, self._pin)
         self._f_int = cb
 
     def read(self):
-        return RPIGPIO.input(self._pin)
+        if THIS_BOARD_TYPE:
+            return RPIGPIO.input(self._pin)
+        else:
+            return self._pin.read()
 
     def cleanup(self):
-        RPIGPIO.cleanup()
+        if THIS_BOARD_TYPE:
+            RPIGPIO.cleanup()
+        else:
+            self._pin.isrExit()
 
 
 class Fonts:
